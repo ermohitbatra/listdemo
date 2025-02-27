@@ -121,7 +121,7 @@ if st.session_state.page == "home":
 
     # Second Page
 elif st.session_state.page == "second":
-    st.title("Appended demographic")
+    st.title("Appended Demographic")
 
     # Option to go back
     if st.button("Back to Home"):
