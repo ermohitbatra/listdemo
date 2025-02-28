@@ -1,77 +1,60 @@
 import streamlit as st
+from google.cloud import storage
+from io import BytesIO
+import os
 import requests
 import json
-import uuid
+import pandas as pd
+import time
 import streamlit_extras
 from streamlit_extras.switch_page_button import switch_page
 
-def send_request(filename):
-    api_url = "https://relevate-dev-7eg829ox.uc.gateway.dev/fileschema?key=AIzaSyCZtchZF_nqmzY_tnaN25De2IutsN3zld0"
-    payload = {"fileName": filename}
-    headers = {'Content-Type': 'application/json'}
+# Set your GCP credentials C:\Users\kartikeys\Desktop\listdemo\servicecert-relevate-dev-403605-991ce9234fb2.json
+# os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "\Demo\servicecert-relevate-dev-403605-991ce9234fb2.json"
 
+# Define the relative path to the service account file
+relative_path = "servicecert-relevate-dev-403605-991ce9234fb2.json"
+# Get the absolute path dynamically
+credentials_path = os.path.join(os.getcwd(), relative_path)
+# os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "\servicecert-relevate-dev-403605-991ce9234fb2.json"
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_path
+
+print(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"))
+
+# GCS bucket name
+BUCKET_NAME = "relevate-dev-403605-list"
+# file_path = "list/123456/TestFORDemo_27_2_25/"  # Folder path
+file_path = "list/123456/test1/"  # Folder path
+uuid = "99570796-f508-11ef-972f-42004e494300"
+
+#BUCKET_NAME = "gs://relevate-dev-403605-list/list/123456/TestFORDemo_27_2_25"
+# fileName = "gs://relevate-dev-403605-list/list/123456/TestFORDemo_27_2_25/"
+fileName = f"gs://{BUCKET_NAME}/{file_path}"
+
+def upload_to_gcs(bucket_name, file):
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(file_path + file.name)
+    blob.upload_from_file(file, content_type="text/csv")
+    return f"File {file.name} uploaded successfully to {bucket_name}"
+
+
+
+def fetch_data(uuid, fileName):
+    """Function to call the API and fetch data."""
+    url = f"https://getdatavaultstatus-580005102993.us-central1.run.app/?uuid={uuid}&fileName={fileName}"
+    print(url)  # Replace with actual API URL
     try:
-        response = requests.post(api_url, data=json.dumps(payload), headers=headers)
-        return response.json()
+        response = requests.get(url)
+        response.raise_for_status()
+        return response.json()  # Assuming the API returns JSON data
     except requests.exceptions.RequestException as e:
-        return {"error": str(e)}
+        st.error(f"API request failed: {e}")
+        return None
 
-def send_request_api2(filename, response_api1, list_type, space_id, primary_id):
-    api_url2 = "https://relevate-dev-7eg829ox.uc.gateway.dev/list?key=AIzaSyCZtchZF_nqmzY_tnaN25De2IutsN3zld0"
 
-    file_schema = response_api1 if isinstance(response_api1, list) else response_api1.get("fileSchema", [])
 
-    payload = {
-        "listType": list_type,
-        "spaceId": space_id,
-        "columnMap": {"primaryId": primary_id},
-        "fileSchema": file_schema,
-        "computedColumns": [],
-        "listMappings": [
-            {
-                "list": "RelevateContact",
-                "mappings": [
-                    {"listColumn": "FIRSTNAME", "fileColumn": "{{column.Firstname}}"},
-                    {"listColumn": "LASTNAME", "fileColumn": "{{column.Lastname}}"},
-                    {"listColumn": "ADDRESS_1", "fileColumn": "{{column.Address1}}"},
-                    {"listColumn": "ADDRESS_2", "fileColumn": "{{column.Address2}}"},
-                    {"listColumn": "CITY", "fileColumn": "{{column.City}}"},
-                    {"listColumn": "STATE", "fileColumn": "{{column.STATE}}"},
-                    {"listColumn": "ZIP", "fileColumn": "{{column.Zip}}"},
-                    {"listColumn": "EMAIL", "fileColumn": "{{column.Email}}"},
-                    {"listColumn": "PHONE", "fileColumn": "{{column.Phone}}"},
-                    {"listColumn": "Age", "fileColumn": "{{column.Age}}"},
-                    {"listColumn": "Gender", "fileColumn": "{{column.Gender}}"},
-                    {"listColumn": "Income", "fileColumn": "{{column.Income}}"},
-                    {"listColumn": "Education", "fileColumn": "{{column.Education}}"}
-                ]
-            }
-        ]
-    }
-
-    headers = {'Content-Type': 'application/json'}
-
-    try:
-        response = requests.post(api_url2, data=json.dumps(payload), headers=headers)
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        return {"error": str(e)}
-
-def get_api_response(uuid):
-    api_url3 = f"https://relevate-dev-7eg829ox.uc.gateway.dev/list/uuid/details?key=AIzaSyCZtchZF_nqmzY_tnaN25De2IutsN3zld0&uuid={uuid}"
-    try:
-        response = requests.get(api_url3)
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        return {"error": str(e)}
-
-def get_api_response2(uuid):
-    api_url4 = f"https://getdatavaultstatus-580005102993.us-central1.run.app?uuid={uuid}"
-    try:
-        response = requests.get(api_url4)
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        return {"error": str(e)}
+data_list = []
 
 if "page" not in st.session_state:
     st.session_state.page = "home"
@@ -79,47 +62,72 @@ if "page" not in st.session_state:
 # First Page
 if st.session_state.page == "home":
     # Streamlit UI
-    st.title("LIST Request App")
 
-    logId = str(uuid.uuid1())
+    st.title("Upload CSV to GCS")
 
-    filename = st.text_input("Enter Filename (e.g., Filename.csv)")
-    list_type = f"{filename}-{logId}"
-    list_type = list_type.replace('.csv','')
-    space_id = "123456"
-    primary_id = "{{column.PatientId}}"
+    uploaded_file = st.file_uploader("Choose a CSV file", type=["csv"])
 
-    if filename:
-        st.write(f"**Entered File:** {filename}")
+    if uploaded_file:
+        # Initialize session state for uploaded file URL
+        if "file_url" not in st.session_state:
+            st.session_state.file_url = None
 
-        if st.button("Send Request"):
-            response_api1 = send_request(filename)
-            # st.write("### Response from API1:")
-            # st.json(response_api1)
+        if st.button("Upload to GCS"):
+            st.session_state.file_url = upload_to_gcs(BUCKET_NAME, uploaded_file)
+            st.success("File uploaded successfully!")
+        fileName = fileName + uploaded_file.name
 
-            response_api2 = send_request_api2(filename, response_api1, list_type, space_id, primary_id)
-            st.write("### Response:")
-            st.json(response_api2)
+    # Show new button only after upload success
+    if st.session_state.get("file_url"):
+        if st.button("File Upload Details"):
+            placeholder = st.empty()
+            while True:
+                data = fetch_data(uuid, fileName)
+                if data and "results" in data:
+                    if data["results"] == 'No records found':
+                        # Create a DataFrame with a message
+                        df = pd.DataFrame([{"Filename": f"{uploaded_file.name}", "Status": "No records found"}])
+                        placeholder.dataframe(df)  # Display DataFrame
+                        # break  # Stop the loop immediately
+                        
+                    else:
+                        # for result in data["results"]:
+                        #     print(result)
+                        #     data_entry = {
+                        #         "Filename": result.get("filename", "N/A"),
+                        #         "Status": result.get("status", "N/A"),
+                        #     }
+                        #     data_list.append(data_entry)
+                        
+                        data_list = [{
+                            "Filename": result.get("filename", "N/A"),
+                            "Status": result.get("status", "N/A"),
+                        } for result in data["results"]]
+                
+                        df = pd.DataFrame(data_list)
+                
+                        # Update the table with the latest data
+                        placeholder.dataframe(df)
+                
+                        #Check if status is 'GoldenKeyDataExportCompleted'
+                        # if any(result.get("status") == "GoldenKeyDataExportCompleted" for result in data["results"]):
+                        #     # st.success("Process completed! Stopping API calls.")
+                        #     break
 
-            if "uuid" in response_api2:
-                st.session_state.api_uuid = response_api2["uuid"]
+                        #Check if status is 'GoldenKeyDataExportCompleted' or 'Failed'
+                        if any(result.get("status") in {"GoldenKeyDataExportCompleted", "Failed"} for result in data["results"]):
+                            break
 
-        if st.button("Fetch Data from GET API (List)") and "api_uuid" in st.session_state:
-            response_api3 = get_api_response(st.session_state.api_uuid)
-            st.write("### Response from GET API:")
-            st.json(response_api3)
-
-        if st.button("Fetch Data from GET API (Entity Resolution)") and "api_uuid" in st.session_state:
-            response_api4 = get_api_response2(st.session_state.api_uuid)
-            st.write("### Response from GET API:")
-            st.json(response_api4)
+            
+                    # time.sleep(300)  # Wait for 5 minutes before the next call
+                    time.sleep(120)  # Wait for 5 minutes before the next call
 
     # Create a hyperlink-like button to navigate
     if st.button("Report"):
         st.session_state.page = "second"
         st.rerun()
 
-    # Second Page
+# Second Page
 elif st.session_state.page == "second":
     st.title("Appended Demographic")
 
