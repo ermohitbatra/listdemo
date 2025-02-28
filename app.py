@@ -1,5 +1,6 @@
 import streamlit as st
 from google.cloud import storage
+from google.oauth2 import service_account
 from io import BytesIO
 import os
 import requests
@@ -8,23 +9,31 @@ import pandas as pd
 import time
 import streamlit_extras
 from streamlit_extras.switch_page_button import switch_page
+import json
+
+
+# Load credentials from Streamlit secrets
+credentials_info = json.loads(st.secrets["gcp"]["service_account_json"])
+credentials = service_account.Credentials.from_service_account_info(credentials_info)
+
+client = storage.Client(credentials=credentials)
 
 # Set your GCP credentials C:\Users\kartikeys\Desktop\listdemo\servicecert-relevate-dev-403605-991ce9234fb2.json
 # os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "\Demo\servicecert-relevate-dev-403605-991ce9234fb2.json"
 
 # Define the relative path to the service account file
-relative_path = "servicecert-relevate-dev-403605-991ce9234fb2.json"
-# Get the absolute path dynamically
-credentials_path = os.path.join(os.getcwd(), relative_path)
-# os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "\servicecert-relevate-dev-403605-991ce9234fb2.json"
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_path
+# relative_path = "servicecert-relevate-dev-403605-991ce9234fb2.json"
+# # Get the absolute path dynamically
+# credentials_path = os.path.join(os.getcwd(), relative_path)
+# # os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "\servicecert-relevate-dev-403605-991ce9234fb2.json"
+# os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_path
 
-print(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"))
+# print(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"))
 
 # GCS bucket name
 BUCKET_NAME = "relevate-dev-403605-list"
-# file_path = "list/123456/TestFORDemo_27_2_25/"  # Folder path
-file_path = "list/123456/test1/"  # Folder path
+file_path = "list/123456/TestFORDemo_27_2_25/"  # Folder path
+# file_path = "list/123456/test1/"  # Folder path
 uuid = "99570796-f508-11ef-972f-42004e494300"
 
 #BUCKET_NAME = "gs://relevate-dev-403605-list/list/123456/TestFORDemo_27_2_25"
